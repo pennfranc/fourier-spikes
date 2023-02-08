@@ -1,6 +1,12 @@
 import cmath
 import numpy as np
 from scipy.signal import argrelextrema
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+from tqdm import tqdm
+import imageio
+import shutil
+import os
 
 def n_uniform_spikes(n_spikes):
     """
@@ -192,3 +198,113 @@ def peak_freq_components(spikes, frequency_magnitudes, frequencies, limited_indi
         selected_frequencies = selected_frequencies[limited_indices]
 
     return selected_frequencies, selected_indices
+
+
+
+def plot_3d_fourier_peaks(spikes, peak_indices, fourier_vals, frequencies,
+                          min_index_offset=500, max_index_offset=100,
+                          dot_labels='selected maxima', plot_complex_projections=True,
+                          fix_legend_position=None):
+    ax = plt.figure(figsize=(8, 6), dpi=150).add_subplot(projection='3d')
+
+    # Prepare arrays x, y, z
+
+    plot_indices = range(peak_indices[0] - min_index_offset,
+                         peak_indices[-1] + max_index_offset)
+
+    """ax.plot(fourier_vals.real[plot_indices],
+            frequencies[plot_indices],
+            fourier_vals.imag[plot_indices], 
+            label='fourier values')"""
+
+    min_imag_value = min(fourier_vals.imag[plot_indices]) - 1
+    min_real_value = min(fourier_vals.real[plot_indices]) - 1
+
+    if plot_complex_projections:
+        # imaginary values plot
+        ax.plot([min_real_value] * len(plot_indices),
+                frequencies[plot_indices],
+                fourier_vals.imag[plot_indices], 
+                label='imaginary parts of fourier values',
+                alpha=0.5)
+
+        # real values plot
+        ax.plot(fourier_vals.real[plot_indices],
+                frequencies[plot_indices],
+                [min_imag_value] * len(plot_indices), 
+                label='real parts of fourier values',
+                alpha=0.5)
+
+    # line of (0,0) complex value, through frequencies
+    ax.plot([0, 0],
+            frequencies[[plot_indices[0], plot_indices[-1]]],
+            [0, 0], 
+            alpha=1.0,
+            label='zero', color='green')
+
+    # zero-line for imaginary projection
+    ax.plot([min_real_value, min_real_value],
+            frequencies[[plot_indices[0], plot_indices[-1]]],
+            [0, 0], 
+            alpha=0.5,
+            color='green')
+
+    # zero-line for real projection
+    ax.plot([0, 0],
+            frequencies[[plot_indices[0], plot_indices[-1]]],
+            [min_imag_value, min_imag_value], 
+            alpha=0.5,
+            color='green')
+
+
+    # dots at peaks in fourier space
+    ax.scatter(fourier_vals[peak_indices].real,
+               frequencies[peak_indices],
+               fourier_vals[peak_indices].imag,
+               label=dot_labels, color='red')
+
+    for peak_idx in peak_indices:
+
+        # dashed support lines
+        ax.plot([min_real_value, fourier_vals[peak_idx].real],
+                [frequencies[peak_idx], frequencies[peak_idx]],
+                [fourier_vals[peak_idx].imag, fourier_vals[peak_idx].imag], color='red',
+                linestyle='--')
+        ax.plot([fourier_vals[peak_idx].real, fourier_vals[peak_idx].real],
+                [frequencies[peak_idx], frequencies[peak_idx]],
+                [min_imag_value, fourier_vals[peak_idx].imag], color='red',
+                linestyle='--')
+
+        # solid line pointing to chosen peak
+        ax.plot([0, fourier_vals[peak_idx].real],
+                [frequencies[peak_idx], frequencies[peak_idx]],
+                [0, fourier_vals[peak_idx].imag], color='red',
+                linestyle='-')
+
+    ax.legend(loc=fix_legend_position)
+
+    ax.set_xlabel('real')
+    ax.set_ylabel('frequency')
+    ax.zaxis.labelpad=0
+    ax.dist = 11
+    ax.set_zlabel('imaginary', linespacing=3.4, rotation=90)
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+
+    return ax
+
+
+def create_gif(ax, fig, fps, steps, gif_path):
+    tmp_dir = 'gif_tmp_dir'
+    os.mkdir(tmp_dir)
+    try:
+        images = []
+        print("Creating individual images...")
+        for i in tqdm(range(0, steps)):
+            ax.view_init(30, i * (360 / steps))
+            name = tmp_dir + '/' + str(i) + '.png'
+            fig.savefig(name)
+            images.append(imageio.imread(name))
+        print("Creating gif...")
+        imageio.mimsave(gif_path, images, fps=fps)
+    finally:
+        shutil.rmtree(tmp_dir)
